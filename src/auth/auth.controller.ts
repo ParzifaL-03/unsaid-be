@@ -17,7 +17,6 @@ import {
   sessionResponseSchema,
   signOutResponseSchema,
 } from '../contracts/auth';
-import type { UserDocument } from '../database/models';
 import {
   AuthService,
   googleUserInfoSchema,
@@ -25,6 +24,7 @@ import {
 } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { CurrentUser } from './current-user.decorator';
+import type { UserDocument } from './schemas/user.schema';
 
 @Controller()
 export class AuthController {

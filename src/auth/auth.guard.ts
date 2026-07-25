@@ -1,8 +1,8 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiError } from '../common/api-error';
-import type { UserDocument } from '../database/models';
 import { AuthService } from './auth.service';
+import type { UserDocument } from './schemas/user.schema';
 
 export type AuthenticatedRequest = Request & { user: UserDocument };
 

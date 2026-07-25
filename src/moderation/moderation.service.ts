@@ -1,16 +1,25 @@
 import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
 import type { z } from 'zod';
+import type { UserDocument } from '../auth/schemas/user.schema';
 import { ApiError } from '../common/api-error';
 import type { createReportInputSchema } from '../contracts/moderation';
-import { BlockModel, ReportModel, type UserDocument } from '../database/models';
+import { Block } from './schemas/block.schema';
+import { Report } from './schemas/report.schema';
 
 @Injectable()
 export class ModerationService {
+  constructor(
+    @InjectModel(Report.name) private readonly reportModel: Model<Report>,
+    @InjectModel(Block.name) private readonly blockModel: Model<Block>,
+  ) {}
+
   async report(
     user: UserDocument,
     input: z.infer<typeof createReportInputSchema>,
   ) {
-    const report = await ReportModel.create({
+    const report = await this.reportModel.create({
       reporterId: user._id,
       ...input,
     });
@@ -25,7 +34,7 @@ export class ModerationService {
         'You cannot block your own account.',
       );
     }
-    await BlockModel.updateOne(
+    await this.blockModel.updateOne(
       { blockerId: user._id, blockedUserId },
       { $setOnInsert: { blockerId: user._id, blockedUserId } },
       { upsert: true },
@@ -34,7 +43,7 @@ export class ModerationService {
   }
 
   async unblock(user: UserDocument, blockedUserId: string) {
-    await BlockModel.deleteOne({
+    await this.blockModel.deleteOne({
       blockerId: user._id,
       blockedUserId,
     });

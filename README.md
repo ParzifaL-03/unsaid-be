@@ -67,6 +67,10 @@ npm run dev
 
 The API starts at `http://localhost:4000/api`.
 
+If `mongodb+srv://` fails with `querySrv ECONNREFUSED`, keep
+`MONGODB_DNS_SERVERS=1.1.1.1,8.8.8.8` in `.env` so Node resolves MongoDB Atlas
+SRV records through public DNS instead of the local resolver.
+
 For Google OAuth, configure this redirect URI:
 
 ```text

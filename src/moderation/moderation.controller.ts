@@ -10,6 +10,7 @@ import {
 import { z } from 'zod';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import type { UserDocument } from '../auth/schemas/user.schema';
 import {
   parseResponse,
   ZodValidationPipe,
@@ -20,7 +21,6 @@ import {
   createReportInputSchema,
   reportResponseSchema,
 } from '../contracts/moderation';
-import type { UserDocument } from '../database/models';
 import { ModerationService } from './moderation.service';
 
 const userParamsSchema = z.strictObject({ userId: objectIdSchema });

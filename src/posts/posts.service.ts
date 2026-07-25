@@ -1,21 +1,26 @@
 import { Injectable } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
 import type { z } from 'zod';
+import type { UserDocument } from '../auth/schemas/user.schema';
 import { ApiError } from '../common/api-error';
 import type {
   createPostInputSchema,
   createReplyInputSchema,
   listPostsQuerySchema,
 } from '../contracts/content';
-import {
-  PostModel,
-  ReactionModel,
-  ReplyModel,
-  type UserDocument,
-} from '../database/models';
+import { Post, type PostDocument } from './schemas/post.schema';
+import { Reaction } from './schemas/reaction.schema';
+import { Reply, type ReplyDocument } from './schemas/reply.schema';
 
 @Injectable()
 export class PostsService {
+  constructor(
+    @InjectModel(Post.name) private readonly postModel: Model<Post>,
+    @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
+    @InjectModel(Reaction.name) private readonly reactionModel: Model<Reaction>,
+  ) {}
+
   private relativeTime(value: Date) {
     const seconds = Math.max(
       0,
@@ -29,7 +34,7 @@ export class PostsService {
     return `${Math.floor(hours / 24)}d ago`;
   }
 
-  private mapPost(post: InstanceType<typeof PostModel>) {
+  private mapPost(post: PostDocument) {
     return {
       id: post._id.toString(),
       alias: post.aliasSnapshot,
@@ -42,15 +47,14 @@ export class PostsService {
     };
   }
 
-  private mapReply(reply: InstanceType<typeof ReplyModel>) {
-    const createdAt = reply.get('createdAt');
+  private mapReply(reply: ReplyDocument) {
     return {
       id: reply._id.toString(),
       postId: reply.postId.toString(),
       alias: reply.aliasSnapshot,
       body: reply.body,
       visibility: reply.visibility,
-      createdAt: createdAt.toISOString(),
+      createdAt: reply.createdAt.toISOString(),
     };
   }
 
@@ -60,7 +64,8 @@ export class PostsService {
     if (query.mood) filter.mood = query.mood;
     if (query.topic) filter.topic = query.topic;
 
-    const posts = await PostModel.find(filter)
+    const posts = await this.postModel
+      .find(filter)
       .sort({ _id: -1 })
       .limit(query.limit + 1);
     const hasNextPage = posts.length > query.limit;
@@ -72,7 +77,7 @@ export class PostsService {
   }
 
   async get(postId: string) {
-    const post = await PostModel.findOne({
+    const post = await this.postModel.findOne({
       _id: postId,
       status: 'published',
     });
@@ -84,7 +89,7 @@ export class PostsService {
     user: UserDocument,
     input: z.infer<typeof createPostInputSchema>,
   ) {
-    const post = await PostModel.create({
+    const post = await this.postModel.create({
       authorId: user._id,
       aliasSnapshot: user.alias,
       body: input.body,
@@ -97,11 +102,13 @@ export class PostsService {
 
   async listReplies(postId: string) {
     await this.get(postId);
-    const replies = await ReplyModel.find({
-      postId,
-      status: 'published',
-      visibility: 'public',
-    }).sort({ createdAt: 1 });
+    const replies = await this.replyModel
+      .find({
+        postId,
+        status: 'published',
+        visibility: 'public',
+      })
+      .sort({ createdAt: 1 });
     return replies.map((reply) => this.mapReply(reply));
   }
 
@@ -110,38 +117,41 @@ export class PostsService {
     postId: string,
     input: z.infer<typeof createReplyInputSchema>,
   ) {
-    const post = await PostModel.findOne({
+    const post = await this.postModel.findOne({
       _id: postId,
       status: 'published',
     });
     if (!post) throw new ApiError(404, 'POST_NOT_FOUND', 'Post was not found.');
 
-    const reply = await ReplyModel.create({
+    const reply = await this.replyModel.create({
       postId: post._id,
       authorId: user._id,
       aliasSnapshot: user.alias,
       body: input.body,
       visibility: input.visibility,
     });
-    await PostModel.updateOne({ _id: post._id }, { $inc: { replyCount: 1 } });
+    await this.postModel.updateOne(
+      { _id: post._id },
+      { $inc: { replyCount: 1 } },
+    );
     return this.mapReply(reply);
   }
 
   async addEcho(user: UserDocument, postId: string) {
-    const post = await PostModel.findOne({
+    const post = await this.postModel.findOne({
       _id: postId,
       status: 'published',
     });
     if (!post) throw new ApiError(404, 'POST_NOT_FOUND', 'Post was not found.');
 
     try {
-      await ReactionModel.create({
+      await this.reactionModel.create({
         targetType: 'post',
         targetId: post._id,
         userId: user._id,
         type: 'echo',
       });
-      const updated = await PostModel.findByIdAndUpdate(
+      const updated = await this.postModel.findByIdAndUpdate(
         post._id,
         { $inc: { echoCount: 1 } },
         { new: true },
@@ -156,7 +166,7 @@ export class PostsService {
   }
 
   async removeEcho(user: UserDocument, postId: string) {
-    const removed = await ReactionModel.deleteOne({
+    const removed = await this.reactionModel.deleteOne({
       targetType: 'post',
       targetId: postId,
       userId: user._id,
@@ -164,12 +174,12 @@ export class PostsService {
     });
     const post =
       removed.deletedCount > 0
-        ? await PostModel.findOneAndUpdate(
+        ? await this.postModel.findOneAndUpdate(
             { _id: postId, echoCount: { $gt: 0 } },
             { $inc: { echoCount: -1 } },
             { new: true },
           )
-        : await PostModel.findById(postId);
+        : await this.postModel.findById(postId);
     if (!post || post.status !== 'published') {
       throw new ApiError(404, 'POST_NOT_FOUND', 'Post was not found.');
     }

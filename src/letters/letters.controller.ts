@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import type { z } from 'zod';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import type { UserDocument } from '../auth/schemas/user.schema';
 import {
   parseResponse,
   ZodValidationPipe,
@@ -11,7 +12,6 @@ import {
   openLetterResponseSchema,
   openLettersResponseSchema,
 } from '../contracts/content';
-import type { UserDocument } from '../database/models';
 import { LettersService } from './letters.service';
 
 @Controller('open-letters')

@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
 import { createHmac } from 'node:crypto';
+import type { Model } from 'mongoose';
 import type { z } from 'zod';
+import { User, type UserDocument } from '../auth/schemas/user.schema';
 import type { AppEnv } from '../config/env';
 import type { createOpenLetterInputSchema } from '../contracts/content';
-import { LetterModel, UserModel, type UserDocument } from '../database/models';
+import { Letter, type LetterDocument } from './schemas/letter.schema';
 
 @Injectable()
 export class LettersService {
-  constructor(private readonly config: ConfigService<AppEnv, true>) {}
+  constructor(
+    private readonly config: ConfigService<AppEnv, true>,
+    @InjectModel(Letter.name) private readonly letterModel: Model<Letter>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+  ) {}
 
   private emailHash(email: string) {
     return createHmac('sha256', this.config.get('AUTH_SECRET', { infer: true }))
@@ -16,7 +23,7 @@ export class LettersService {
       .digest('hex');
   }
 
-  private mapLetter(letter: InstanceType<typeof LetterModel>) {
+  private mapLetter(letter: LetterDocument) {
     return {
       id: letter._id.toString(),
       recipientLabel: letter.recipientLabel,
@@ -29,10 +36,11 @@ export class LettersService {
   }
 
   async listPublic() {
-    const letters = await LetterModel.find({
-      visibility: 'public',
-      status: { $in: ['sent', 'read'] },
-    })
+    const letters = await this.letterModel
+      .find({
+        visibility: 'public',
+        status: { $in: ['sent', 'read'] },
+      })
       .sort({ sentAt: -1 })
       .limit(50);
     return letters.map((letter) => this.mapLetter(letter));
@@ -43,8 +51,8 @@ export class LettersService {
     input: z.infer<typeof createOpenLetterInputSchema>,
   ) {
     const recipientEmail = input.recipientEmail.toLowerCase();
-    const recipient = await UserModel.findOne({ email: recipientEmail });
-    const letter = await LetterModel.create({
+    const recipient = await this.userModel.findOne({ email: recipientEmail });
+    const letter = await this.letterModel.create({
       senderId: user._id,
       aliasSnapshot: user.alias,
       recipientUserId: recipient?._id,

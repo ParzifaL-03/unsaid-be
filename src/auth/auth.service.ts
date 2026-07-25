@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
 import {
   createHash,
   createHmac,
@@ -7,10 +8,12 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import type { Request, Response } from 'express';
+import type { Model } from 'mongoose';
 import { z } from 'zod';
 import type { AppEnv } from '../config/env';
 import type { AuthAccount } from '../contracts/auth';
-import { SessionModel, UserModel, type UserDocument } from '../database/models';
+import { Session } from './schemas/session.schema';
+import { User, type UserDocument } from './schemas/user.schema';
 
 export const SESSION_COOKIE = 'unsaid-session';
 export const OAUTH_STATE_COOKIE = 'unsaid-oauth-state';
@@ -32,7 +35,11 @@ const aliases = aliasAdjectives.flatMap((adjective) =>
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly config: ConfigService<AppEnv, true>) {}
+  constructor(
+    private readonly config: ConfigService<AppEnv, true>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Session.name) private readonly sessionModel: Model<Session>,
+  ) {}
 
   private base64Url(input: Buffer | string) {
     return Buffer.from(input).toString('base64url');
@@ -143,7 +150,7 @@ export class AuthService {
 
   async upsertGoogleUser(input: z.infer<typeof googleUserInfoSchema>) {
     const email = input.email.toLowerCase();
-    return UserModel.findOneAndUpdate(
+    return this.userModel.findOneAndUpdate(
       { googleAccountId: input.sub },
       {
         $set: {
@@ -168,7 +175,7 @@ export class AuthService {
   async rotateAlias(user: UserDocument) {
     const currentIndex = aliases.indexOf(user.alias);
     const alias = aliases[(currentIndex + 1 + aliases.length) % aliases.length];
-    return UserModel.findByIdAndUpdate(
+    return this.userModel.findByIdAndUpdate(
       user._id,
       { $set: { alias, aliasChangedAt: new Date() } },
       { new: true },
@@ -190,7 +197,7 @@ export class AuthService {
       ? forwardedFor[0]
       : (forwardedFor?.split(',')[0] ?? request.ip);
 
-    await SessionModel.create({
+    await this.sessionModel.create({
       userId,
       tokenHash: this.hashToken(token),
       expiresAt,
@@ -209,20 +216,20 @@ export class AuthService {
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (!token) return null;
 
-    const session = await SessionModel.findOne({
+    const session = await this.sessionModel.findOne({
       tokenHash: this.hashToken(token),
       expiresAt: { $gt: new Date() },
     });
     if (!session) return null;
 
-    const user = await UserModel.findOne({
+    const user = await this.userModel.findOne({
       _id: session.userId,
       status: 'active',
     });
     if (!user) return null;
 
     if (Date.now() - session.lastUsedAt.getTime() > 60 * 60 * 1000) {
-      await SessionModel.updateOne(
+      await this.sessionModel.updateOne(
         { _id: session._id },
         { $set: { lastUsedAt: new Date() } },
       );
@@ -233,7 +240,7 @@ export class AuthService {
   async revokeSession(request: Request) {
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (token) {
-      await SessionModel.deleteOne({ tokenHash: this.hashToken(token) });
+      await this.sessionModel.deleteOne({ tokenHash: this.hashToken(token) });
     }
   }
 }

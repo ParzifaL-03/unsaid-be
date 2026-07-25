@@ -5,15 +5,25 @@ const optionalNonEmptyString = z.preprocess(
   z.string().trim().min(1).optional(),
 );
 
+const optionalCsvString = z.preprocess(
+  (value) =>
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : value,
+  z.array(z.string().trim().min(1)).optional(),
+);
+
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   MONGODB_URI: z.string().trim().min(1, 'MONGODB_URI is required.'),
-  AUTH_SECRET: z
-    .string()
-    .min(32, 'AUTH_SECRET must contain at least 32 characters.'),
+  MONGODB_DNS_SERVERS: optionalCsvString,
+  AUTH_SECRET: z.string(),
   GOOGLE_CLIENT_ID: optionalNonEmptyString,
   GOOGLE_CLIENT_SECRET: optionalNonEmptyString,
   API_URL: z.url().default('http://localhost:4000'),

@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import cookieParser from 'cookie-parser';
+import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { ApiExceptionFilter } from './common/api-exception.filter';
 import type { AppEnv } from './config/env';

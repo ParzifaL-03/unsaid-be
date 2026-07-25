@@ -1,11 +1,18 @@
 import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
 import type { z } from 'zod';
+import type { UserDocument } from '../auth/schemas/user.schema';
 import type { createCapsuleInputSchema } from '../contracts/content';
-import { CapsuleModel, type UserDocument } from '../database/models';
+import { Capsule, type CapsuleDocument } from './schemas/capsule.schema';
 
 @Injectable()
 export class CapsulesService {
-  private mapCapsule(capsule: InstanceType<typeof CapsuleModel>) {
+  constructor(
+    @InjectModel(Capsule.name) private readonly capsuleModel: Model<Capsule>,
+  ) {}
+
+  private mapCapsule(capsule: CapsuleDocument) {
     return {
       id: capsule._id.toString(),
       alias: capsule.aliasSnapshot,
@@ -20,14 +27,16 @@ export class CapsulesService {
 
   async list(user: UserDocument) {
     const now = new Date();
-    await CapsuleModel.updateMany(
+    await this.capsuleModel.updateMany(
       { authorId: user._id, status: 'sealed', unlockAt: { $lte: now } },
       { $set: { status: 'unlocked', unlockedAt: now } },
     );
-    const capsules = await CapsuleModel.find({
-      authorId: user._id,
-      status: { $ne: 'deleted' },
-    }).sort({ unlockAt: 1 });
+    const capsules = await this.capsuleModel
+      .find({
+        authorId: user._id,
+        status: { $ne: 'deleted' },
+      })
+      .sort({ unlockAt: 1 });
     return capsules.map((capsule) => this.mapCapsule(capsule));
   }
 
@@ -35,7 +44,7 @@ export class CapsulesService {
     user: UserDocument,
     input: z.infer<typeof createCapsuleInputSchema>,
   ) {
-    const capsule = await CapsuleModel.create({
+    const capsule = await this.capsuleModel.create({
       authorId: user._id,
       aliasSnapshot: user.alias,
       body: input.body,
