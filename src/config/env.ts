@@ -1,0 +1,29 @@
+import { z } from 'zod';
+
+const optionalNonEmptyString = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
+
+export const envSchema = z.object({
+  NODE_ENV: z
+    .enum(['development', 'test', 'production'])
+    .default('development'),
+  PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  MONGODB_URI: z.string().trim().min(1, 'MONGODB_URI is required.'),
+  AUTH_SECRET: z
+    .string()
+    .min(32, 'AUTH_SECRET must contain at least 32 characters.'),
+  GOOGLE_CLIENT_ID: optionalNonEmptyString,
+  GOOGLE_CLIENT_SECRET: optionalNonEmptyString,
+  API_URL: z.url().default('http://localhost:4000'),
+  FRONTEND_URL: z.url().default('http://localhost:3000'),
+  SESSION_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  COOKIE_SAME_SITE: z.enum(['lax', 'none']).default('lax'),
+});
+
+export type AppEnv = z.infer<typeof envSchema>;
+
+export function validateEnv(config: Record<string, unknown>): AppEnv {
+  return envSchema.parse(config);
+}
