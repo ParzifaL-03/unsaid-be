@@ -117,12 +117,22 @@ export class AuthService {
 
   createOauthState() {
     const state = this.base64Url(randomBytes(32));
-    return { state, cookieValue: this.encodeSignedJson({ state }) };
+    const codeVerifier = this.base64Url(randomBytes(32));
+    const codeChallenge = this.base64Url(
+      createHash('sha256').update(codeVerifier).digest(),
+    );
+    return {
+      state,
+      codeChallenge,
+      cookieValue: this.encodeSignedJson({ state, codeVerifier }),
+    };
   }
 
   readOauthState(value?: string) {
     if (!value) return null;
-    return this.decodeSignedJson<{ state: string }>(value);
+    return this.decodeSignedJson<{ state: string; codeVerifier: string }>(
+      value,
+    );
   }
 
   setOauthStateCookie(response: Response, value: string) {
@@ -145,6 +155,10 @@ export class AuthService {
 
   clearAuthCookies(response: Response) {
     response.clearCookie(SESSION_COOKIE, this.cookieOptions());
+    this.clearOauthStateCookie(response);
+  }
+
+  clearOauthStateCookie(response: Response) {
     response.clearCookie(OAUTH_STATE_COOKIE, this.cookieOptions());
   }
 

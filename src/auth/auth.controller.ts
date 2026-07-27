@@ -50,7 +50,7 @@ export class AuthController {
       );
       return;
     }
-    const { state, cookieValue } = this.auth.createOauthState();
+    const { state, codeChallenge, cookieValue } = this.auth.createOauthState();
     const redirectUri = `${this.config.get('API_URL', { infer: true })}/api/auth/google/callback`;
     const authorizationUrl = new URL(
       'https://accounts.google.com/o/oauth2/v2/auth',
@@ -60,6 +60,8 @@ export class AuthController {
     authorizationUrl.searchParams.set('response_type', 'code');
     authorizationUrl.searchParams.set('scope', 'openid email profile');
     authorizationUrl.searchParams.set('state', state);
+    authorizationUrl.searchParams.set('code_challenge', codeChallenge);
+    authorizationUrl.searchParams.set('code_challenge_method', 'S256');
     authorizationUrl.searchParams.set('prompt', 'select_account');
     this.auth.setOauthStateCookie(response, cookieValue);
     response.redirect(authorizationUrl.toString());
@@ -68,7 +70,7 @@ export class AuthController {
   @Get('auth/google/callback')
   async googleCallback(@Req() request: Request, @Res() response: Response) {
     const fail = (reason: string) => {
-      this.auth.clearAuthCookies(response);
+      this.auth.clearOauthStateCookie(response);
       response.redirect(
         `${this.config.get('FRONTEND_URL', { infer: true })}/?auth=${reason}`,
       );
@@ -85,10 +87,16 @@ export class AuthController {
     const savedState = this.auth.readOauthState(
       request.cookies?.[OAUTH_STATE_COOKIE] as string | undefined,
     );
-    if (!code || !state || savedState?.state !== state) {
+    if (
+      !code ||
+      !state ||
+      !savedState?.codeVerifier ||
+      savedState.state !== state
+    ) {
       fail('invalid-google-state');
       return;
     }
+    this.auth.clearOauthStateCookie(response);
 
     const redirectUri = `${this.config.get('API_URL', { infer: true })}/api/auth/google/callback`;
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -98,6 +106,7 @@ export class AuthController {
         client_id: google.clientId,
         client_secret: google.clientSecret,
         code,
+        code_verifier: savedState.codeVerifier,
         grant_type: 'authorization_code',
         redirect_uri: redirectUri,
       }),
@@ -133,17 +142,19 @@ export class AuthController {
       request,
       user._id.toString(),
     );
-    this.auth.clearAuthCookies(response);
     this.auth.setSessionCookie(response, session);
     response.redirect(this.config.get('FRONTEND_URL', { infer: true }));
   }
 
   @Get('auth/session')
-  async session(@Req() request: Request) {
+  async session(@Req() request: Request, @Res() response: Response) {
     const session = await this.auth.getSession(request);
-    return parseResponse(sessionResponseSchema, {
-      account: session?.account ?? null,
-    });
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.json(
+      parseResponse(sessionResponseSchema, {
+        account: session?.account ?? null,
+      }),
+    );
   }
 
   @Post('auth/sign-out')

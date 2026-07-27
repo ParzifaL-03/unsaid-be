@@ -23,12 +23,22 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   MONGODB_URI: z.string().trim().min(1, 'MONGODB_URI is required.'),
   MONGODB_DNS_SERVERS: optionalCsvString,
-  AUTH_SECRET: z.string(),
+  AUTH_SECRET: z
+    .string()
+    .min(32, 'AUTH_SECRET must contain at least 32 characters.'),
   GOOGLE_CLIENT_ID: optionalNonEmptyString,
   GOOGLE_CLIENT_SECRET: optionalNonEmptyString,
   API_URL: z.url().default('http://localhost:4000'),
   FRONTEND_URL: z.url().default('http://localhost:3000'),
-  CORS_URL: z.string().transform((value) => value.split(',').map((item) => item.trim())),
+  CORS_URL: z
+    .string()
+    .transform((value) =>
+      value
+        .split(',')
+        .map((item) => item.trim().replace(/\/$/, ''))
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.url()).min(1, 'CORS_URL must include an allowed origin.')),
   SESSION_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   COOKIE_SAME_SITE: z.enum(['lax', 'none']).default('lax'),
 });
