@@ -17,7 +17,7 @@ async function bootstrap() {
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({
-    origin: config.get('FRONTEND_URL', { infer: true }),
+    origin: config.get('CORS_URL', { infer: true }),
     credentials: true,
     methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   });

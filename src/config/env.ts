@@ -28,6 +28,7 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: optionalNonEmptyString,
   API_URL: z.url().default('http://localhost:4000'),
   FRONTEND_URL: z.url().default('http://localhost:3000'),
+  CORS_URL: z.string().transform((value) => value.split(',').map((item) => item.trim())),
   SESSION_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   COOKIE_SAME_SITE: z.enum(['lax', 'none']).default('lax'),
 });
