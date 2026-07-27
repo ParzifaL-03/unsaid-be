@@ -24,8 +24,7 @@ export const envSchema = z.object({
   MONGODB_URI: z.string().trim().min(1, 'MONGODB_URI is required.'),
   MONGODB_DNS_SERVERS: optionalCsvString,
   AUTH_SECRET: z
-    .string()
-    .min(32, 'AUTH_SECRET must contain at least 32 characters.'),
+    .string(),
   GOOGLE_CLIENT_ID: optionalNonEmptyString,
   GOOGLE_CLIENT_SECRET: optionalNonEmptyString,
   API_URL: z.url().default('http://localhost:4000'),
