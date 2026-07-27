@@ -41,13 +41,20 @@ export class AuthController {
     return clientId && clientSecret ? { clientId, clientSecret } : null;
   }
 
+  private frontendCallbackUrl(error?: string) {
+    const url = new URL(
+      '/auth/callback',
+      this.config.get('FRONTEND_URL', { infer: true }),
+    );
+    if (error) url.searchParams.set('error', error);
+    return url.toString();
+  }
+
   @Get('auth/google')
   google(@Res() response: Response) {
     const google = this.googleConfig();
     if (!google) {
-      response.redirect(
-        `${this.config.get('FRONTEND_URL', { infer: true })}/?auth=missing-google-config`,
-      );
+      response.redirect(this.frontendCallbackUrl('missing-google-config'));
       return;
     }
     const { state, codeChallenge, cookieValue } = this.auth.createOauthState();
@@ -71,9 +78,7 @@ export class AuthController {
   async googleCallback(@Req() request: Request, @Res() response: Response) {
     const fail = (reason: string) => {
       this.auth.clearOauthStateCookie(response);
-      response.redirect(
-        `${this.config.get('FRONTEND_URL', { infer: true })}/?auth=${reason}`,
-      );
+      response.redirect(this.frontendCallbackUrl(reason));
     };
     const google = this.googleConfig();
     if (!google) {
@@ -143,7 +148,7 @@ export class AuthController {
       user._id.toString(),
     );
     this.auth.setSessionCookie(response, session);
-    response.redirect(this.config.get('FRONTEND_URL', { infer: true }));
+    response.redirect(this.frontendCallbackUrl());
   }
 
   @Get('auth/session')
