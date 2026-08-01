@@ -293,6 +293,9 @@ export class CapsuleDto extends CreateCapsuleDto {
 
   @ApiProperty({ enum: ['sealed', 'unlocked', 'published'] })
   status!: 'sealed' | 'unlocked' | 'published';
+
+  @ApiPropertyOptional({ example: '507f1f77bcf86cd799439012' })
+  publishedPostId?: string;
 }
 
 export class CapsulesDataDto {

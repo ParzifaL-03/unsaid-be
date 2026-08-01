@@ -97,6 +97,7 @@ GET|POST    /api/posts/:id/replies
 POST|DELETE /api/posts/:id/reactions
 GET|POST    /api/open-letters
 GET|POST    /api/capsules
+POST        /api/capsules/:id/publish
 POST        /api/reports
 POST|DELETE /api/blocks/:userId
 GET         /api/auth/google

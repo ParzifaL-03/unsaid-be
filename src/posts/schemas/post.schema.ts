@@ -60,6 +60,9 @@ export class Post {
   @Prop({ type: Number, required: true, min: 0, default: 0 })
   replyCount!: number;
 
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  sourceCapsuleId?: Types.ObjectId;
+
   @Prop({ type: Date })
   deletedAt?: Date;
 }
@@ -71,3 +74,4 @@ PostSchema.index({ status: 1, publishedAt: -1 });
 PostSchema.index({ topic: 1, publishedAt: -1 });
 PostSchema.index({ mood: 1, publishedAt: -1 });
 PostSchema.index({ authorId: 1, publishedAt: -1 });
+PostSchema.index({ sourceCapsuleId: 1 }, { unique: true, sparse: true });
