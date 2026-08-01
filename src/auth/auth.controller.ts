@@ -196,6 +196,7 @@ export class AuthController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Refresh access and refresh JWT cookies' })
   @ApiCookieAuth('unsaid-refresh')
+  @ApiBearerAuth('bearer')
   @ApiOkResponse({ schema: apiEnvelopeSchema(SessionDataDto) })
   @ApiUnauthorizedResponse({ description: 'No active refresh token.' })
   async refresh(

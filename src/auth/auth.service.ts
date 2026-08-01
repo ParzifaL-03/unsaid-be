@@ -118,7 +118,6 @@ export class AuthService {
     const cookieToken = request.cookies?.[cookieName] as string | undefined;
     if (cookieToken) return cookieToken;
 
-    if (cookieName !== ACCESS_TOKEN_COOKIE) return undefined;
     const authorization = request.get('authorization');
     const [scheme, token] = authorization?.split(/\s+/) ?? [];
     return scheme?.toLowerCase() === 'bearer' ? token : undefined;

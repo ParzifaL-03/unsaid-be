@@ -94,6 +94,30 @@ describe('AuthService JWT handling', () => {
     expect(findOne).not.toHaveBeenCalled();
   });
 
+  it('accepts a refresh token from the bearer header', async () => {
+    const user = {
+      _id: { toString: () => 'user-1' },
+      alias: 'quiet moon',
+      email: 'user@example.com',
+    } as UserDocument;
+    findOne.mockResolvedValue(user);
+    service.setAuthCookies({ cookie } as unknown as Response, 'user-1');
+    const refreshToken = cookie.mock.calls[1][1];
+    cookie.mockClear();
+
+    const session = await service.refreshSession(
+      {
+        cookies: {},
+        get: (name: string) =>
+          name === 'authorization' ? `Bearer ${refreshToken}` : undefined,
+      } as unknown as Request,
+      { cookie } as unknown as Response,
+    );
+
+    expect(session?.account.userId).toBe('user-1');
+    expect(cookie).toHaveBeenCalledTimes(2);
+  });
+
   it('signs and verifies the OAuth state with JwtService', () => {
     const sign = jest.spyOn(jwtService, 'sign');
     const verify = jest.spyOn(jwtService, 'verify');
