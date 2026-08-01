@@ -113,3 +113,22 @@ npm run typecheck
 npm run lint
 npm run build
 ```
+
+## CI/CD
+
+Push to `main` runs GitHub Actions checks and deploys production to the AWS
+server over SSH. The server path must already contain a clone of this repository
+and PM2 must be available for process restart. Configure these repository
+secrets:
+
+```text
+AWS_HOST
+AWS_PORT
+AWS_USER
+AWS_SSH_KEY
+AWS_BE_PATH
+AWS_BE_PM2_NAME
+```
+
+`AWS_PORT` defaults to `22`, and `AWS_BE_PM2_NAME` defaults to `unsaid-be`.
+The server should have its production `.env` file in place before deploy.

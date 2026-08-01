@@ -1,0 +1,77 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: unsaid-be-production
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  deploy:
+    name: Deploy to AWS Server
+    runs-on: ubuntu-latest
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AWS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$AWS_PORT" "$AWS_HOST" >> ~/.ssh/known_hosts
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_PORT: ${{ secrets.AWS_PORT || '22' }}
+          AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+
+      - name: Deploy production
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$AWS_PORT" "$AWS_USER@$AWS_HOST" "
+            set -e
+            cd '$AWS_BE_PATH'
+            git fetch origin main
+            git reset --hard origin/main
+            npm ci
+            npm run build
+            pm2 restart '$AWS_BE_PM2_NAME' --update-env || pm2 start npm --name '$AWS_BE_PM2_NAME' -- run start:prod
+            pm2 save
+          "
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_PORT: ${{ secrets.AWS_PORT || '22' }}
+          AWS_USER: ${{ secrets.AWS_USER }}
+          AWS_BE_PATH: ${{ secrets.AWS_BE_PATH }}
+          AWS_BE_PM2_NAME: ${{ secrets.AWS_BE_PM2_NAME || 'unsaid-be' }}
