@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { parseResponse } from '../common/zod-validation.pipe';
 
-const healthResponseSchema = z.strictObject({
+const healthResponseSchema = z.object({
   status: z.literal('ok'),
   database: z.literal('connected'),
   latencyMs: z.number().int().min(0),

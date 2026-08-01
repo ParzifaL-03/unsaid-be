@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { CapsulesModule } from './capsules/capsules.module';
+import { ApiResponseInterceptor } from './common/api-response';
 import { validateEnv } from './config/env';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
@@ -23,6 +25,12 @@ import { PostsModule } from './posts/posts.module';
     CapsulesModule,
     ModerationModule,
     HealthModule,
+  ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ApiResponseInterceptor,
+    },
   ],
 })
 export class AppModule {}

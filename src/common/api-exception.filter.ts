@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiError } from './api-error';
+import { createApiResponse } from './api-response';
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -17,23 +18,39 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
 
     if (error instanceof ApiError) {
-      response.status(error.getStatus()).json({
-        error: {
-          code: error.code,
-          message: error.message,
-          fields: error.fields,
-        },
-      });
+      const statusCode = error.getStatus();
+      response.status(statusCode).json(
+        createApiResponse(
+          {
+            error: {
+              code: error.code,
+              message: error.message,
+              fields: error.fields,
+            },
+          },
+          statusCode,
+          null,
+          false,
+        ),
+      );
       return;
     }
 
     if (error instanceof HttpException) {
-      response.status(error.getStatus()).json({
-        error: {
-          code: 'HTTP_ERROR',
-          message: error.message,
-        },
-      });
+      const statusCode = error.getStatus();
+      response.status(statusCode).json(
+        createApiResponse(
+          {
+            error: {
+              code: 'HTTP_ERROR',
+              message: error.message,
+            },
+          },
+          statusCode,
+          null,
+          false,
+        ),
+      );
       return;
     }
 
@@ -44,19 +61,25 @@ export class ApiExceptionFilter implements ExceptionFilter {
       );
 
     this.logger.error(error);
-    response
-      .status(
-        databaseUnavailable
-          ? HttpStatus.SERVICE_UNAVAILABLE
-          : HttpStatus.INTERNAL_SERVER_ERROR,
-      )
-      .json({
-        error: {
-          code: databaseUnavailable ? 'DATABASE_UNAVAILABLE' : 'INTERNAL_ERROR',
-          message: databaseUnavailable
-            ? 'The database is temporarily unavailable.'
-            : 'An unexpected error occurred.',
+    const statusCode = databaseUnavailable
+      ? HttpStatus.SERVICE_UNAVAILABLE
+      : HttpStatus.INTERNAL_SERVER_ERROR;
+    response.status(statusCode).json(
+      createApiResponse(
+        {
+          error: {
+            code: databaseUnavailable
+              ? 'DATABASE_UNAVAILABLE'
+              : 'INTERNAL_ERROR',
+            message: databaseUnavailable
+              ? 'The database is temporarily unavailable.'
+              : 'An unexpected error occurred.',
+          },
         },
-      });
+        statusCode,
+        null,
+        false,
+      ),
+    );
   }
 }

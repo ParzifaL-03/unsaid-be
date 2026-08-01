@@ -31,7 +31,7 @@ import {
 } from '../contracts/content';
 import { PostsService } from './posts.service';
 
-const idParamsSchema = z.strictObject({ id: objectIdSchema });
+const idParamsSchema = z.object({ id: objectIdSchema });
 
 @Controller('posts')
 export class PostsController {
@@ -42,7 +42,11 @@ export class PostsController {
     @Query(new ZodValidationPipe(listPostsQuerySchema))
     query: z.infer<typeof listPostsQuerySchema>,
   ) {
-    return parseResponse(postsResponseSchema, await this.posts.list(query));
+    const { data, meta } = await this.posts.list(query);
+    return {
+      data: parseResponse(postsResponseSchema, data),
+      meta,
+    };
   }
 
   @Post()

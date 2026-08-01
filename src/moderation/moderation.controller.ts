@@ -23,7 +23,7 @@ import {
 } from '../contracts/moderation';
 import { ModerationService } from './moderation.service';
 
-const userParamsSchema = z.strictObject({ userId: objectIdSchema });
+const userParamsSchema = z.object({ userId: objectIdSchema });
 
 @Controller()
 @UseGuards(AuthGuard)

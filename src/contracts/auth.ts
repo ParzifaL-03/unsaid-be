@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { objectIdSchema } from './common';
 
-export const authAccountSchema = z.strictObject({
+export const authAccountSchema = z.object({
   userId: objectIdSchema,
   alias: z.string().min(3).max(80),
   email: z.email(),
@@ -10,12 +10,12 @@ export const authAccountSchema = z.strictObject({
   image: z.url().optional(),
 });
 
-export const sessionResponseSchema = z.strictObject({
+export const sessionResponseSchema = z.object({
   account: authAccountSchema.nullable(),
 });
 
-export const signOutResponseSchema = z.strictObject({ ok: z.literal(true) });
-export const aliasResponseSchema = z.strictObject({
+export const signOutResponseSchema = z.object({ ok: z.literal(true) });
+export const aliasResponseSchema = z.object({
   account: authAccountSchema,
 });
 

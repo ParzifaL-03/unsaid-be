@@ -164,10 +164,13 @@ export class AuthController {
 
   @Post('auth/sign-out')
   @HttpCode(200)
-  async signOut(@Req() request: Request, @Res() response: Response) {
+  async signOut(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     await this.auth.revokeSession(request);
     this.auth.clearAuthCookies(response);
-    response.json(parseResponse(signOutResponseSchema, { ok: true }));
+    return parseResponse(signOutResponseSchema, { ok: true });
   }
 
   @Post('me/alias')

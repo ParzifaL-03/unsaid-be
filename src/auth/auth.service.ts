@@ -19,7 +19,7 @@ export const SESSION_COOKIE = 'unsaid-session';
 export const OAUTH_STATE_COOKIE = 'unsaid-oauth-state';
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
-export const googleUserInfoSchema = z.strictObject({
+export const googleUserInfoSchema = z.object({
   sub: z.string().min(1),
   email: z.email(),
   email_verified: z.boolean().optional(),
@@ -182,7 +182,7 @@ export class AuthService {
           role: 'user',
         },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
     );
   }
 
@@ -192,7 +192,7 @@ export class AuthService {
     return this.userModel.findByIdAndUpdate(
       user._id,
       { $set: { alias, aliasChangedAt: new Date() } },
-      { new: true },
+      { returnDocument: 'after' },
     );
   }
 

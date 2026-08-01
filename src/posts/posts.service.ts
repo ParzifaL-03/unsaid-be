@@ -60,19 +60,33 @@ export class PostsService {
 
   async list(query: z.infer<typeof listPostsQuerySchema>) {
     const filter: Record<string, unknown> = { status: 'published' };
-    if (query.cursor) filter._id = { $lt: new Types.ObjectId(query.cursor) };
+    const countFilter: Record<string, unknown> = { ...filter };
     if (query.mood) filter.mood = query.mood;
     if (query.topic) filter.topic = query.topic;
+    if (query.mood) countFilter.mood = query.mood;
+    if (query.topic) countFilter.topic = query.topic;
+    if (query.cursor) filter._id = { $lt: new Types.ObjectId(query.cursor) };
 
-    const posts = await this.postModel
-      .find(filter)
-      .sort({ _id: -1 })
-      .limit(query.limit + 1);
+    const [totalData, posts] = await Promise.all([
+      this.postModel.countDocuments(countFilter),
+      this.postModel
+        .find(filter)
+        .sort({ _id: -1 })
+        .skip(query.cursor ? 0 : (query.page - 1) * query.limit)
+        .limit(query.limit + 1),
+    ]);
     const hasNextPage = posts.length > query.limit;
     const page = hasNextPage ? posts.slice(0, query.limit) : posts;
     return {
-      posts: page.map((post) => this.mapPost(post)),
-      nextCursor: hasNextPage ? page.at(-1)!._id.toString() : null,
+      data: {
+        posts: page.map((post) => this.mapPost(post)),
+        nextCursor: hasNextPage ? page.at(-1)!._id.toString() : null,
+      },
+      meta: {
+        page: query.page,
+        totalPage: Math.max(1, Math.ceil(totalData / query.limit)),
+        totalData,
+      },
     };
   }
 
@@ -154,7 +168,7 @@ export class PostsService {
       const updated = await this.postModel.findByIdAndUpdate(
         post._id,
         { $inc: { echoCount: 1 } },
-        { new: true },
+        { returnDocument: 'after' },
       );
       return { active: true, count: updated?.echoCount ?? post.echoCount + 1 };
     } catch (error) {
@@ -177,7 +191,7 @@ export class PostsService {
         ? await this.postModel.findOneAndUpdate(
             { _id: postId, echoCount: { $gt: 0 } },
             { $inc: { echoCount: -1 } },
-            { new: true },
+            { returnDocument: 'after' },
           )
         : await this.postModel.findById(postId);
     if (!post || post.status !== 'published') {

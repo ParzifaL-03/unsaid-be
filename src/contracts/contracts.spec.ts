@@ -5,19 +5,18 @@ import {
 } from './content';
 
 describe('API contracts', () => {
-  it('normalizes a post topic and rejects unknown fields', () => {
+  it('normalizes a post topic and strips unknown fields', () => {
     const valid = createPostInputSchema.parse({
       body: 'This is a valid anonymous expression.',
       topic: '#Starting-Over',
       mood: 'hopeful',
     });
     expect(valid.topic).toBe('starting-over');
-    expect(
-      createPostInputSchema.safeParse({
-        ...valid,
-        authorId: '507f1f77bcf86cd799439011',
-      }).success,
-    ).toBe(false);
+    const parsed = createPostInputSchema.parse({
+      ...valid,
+      authorId: '507f1f77bcf86cd799439011',
+    });
+    expect(parsed).toEqual(valid);
   });
 
   it('validates letter recipient email', () => {
