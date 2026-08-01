@@ -31,7 +31,7 @@ import { CapsulesService } from './capsules.service';
 @Controller('capsules')
 @UseGuards(AuthGuard)
 @ApiTags('Capsules')
-@ApiCookieAuth('unsaid-session')
+@ApiCookieAuth('unsaid-access')
 @ApiBearerAuth('bearer')
 export class CapsulesController {
   constructor(private readonly capsules: CapsulesService) {}

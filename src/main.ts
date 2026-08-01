@@ -59,15 +59,20 @@ async function bootstrap() {
       {
         type: 'http',
         scheme: 'bearer',
-        bearerFormat: 'Session token',
-        description: 'Use an UNSAID session token for protected endpoints.',
+        bearerFormat: 'JWT',
+        description: 'Use the UNSAID access JWT for protected endpoints.',
       },
       'bearer',
     )
-    .addCookieAuth('unsaid-session', {
+    .addCookieAuth('unsaid-access', {
       type: 'apiKey',
       in: 'cookie',
-      description: 'Session cookie set by Google OAuth.',
+      description: 'Access JWT cookie set by Google OAuth.',
+    })
+    .addCookieAuth('unsaid-refresh', {
+      type: 'apiKey',
+      in: 'cookie',
+      description: 'Refresh JWT cookie used by /auth/refresh.',
     })
     .build();
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig, {

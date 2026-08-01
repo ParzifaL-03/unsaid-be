@@ -8,7 +8,7 @@ NestJS + MongoDB backend for the
 - NestJS 11 and TypeScript
 - MongoDB with Mongoose
 - Zod 4 validation for request and response payloads
-- Google OAuth with revocable, database-backed sessions
+- Google OAuth with HTTP-only access and refresh JWT cookies
 - HTTP-only credential cookies and explicit CORS origin
 
 ## Architecture
@@ -21,7 +21,7 @@ Controller → Zod → Auth guard → Service → Mongoose model
 
 ```text
 src/
-├── auth/         # Google OAuth, sessions, current-user guard
+├── auth/         # Google OAuth, JWT cookies, current-user guard
 ├── capsules/     # Time capsules
 ├── common/       # Error filter and Zod pipe
 ├── config/       # Validated environment
@@ -43,7 +43,6 @@ command.
 | Collection  | Purpose                                                 |
 | ----------- | ------------------------------------------------------- |
 | `users`     | Private Google identity, public alias, role, and status |
-| `sessions`  | Hashed session tokens with TTL expiration               |
 | `posts`     | Anonymous expressions and denormalized counters         |
 | `replies`   | Public and private post replies                         |
 | `reactions` | Unique user echoes for posts and replies                |
@@ -100,6 +99,7 @@ POST|DELETE /api/blocks/:userId
 GET         /api/auth/google
 GET         /api/auth/google/callback
 GET         /api/auth/session
+POST        /api/auth/refresh
 POST        /api/auth/sign-out
 POST        /api/me/alias
 GET         /api/health/database

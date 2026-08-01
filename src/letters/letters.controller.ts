@@ -45,7 +45,7 @@ export class LettersController {
   @Post()
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Create an anonymous open letter' })
-  @ApiCookieAuth('unsaid-session')
+  @ApiCookieAuth('unsaid-access')
   @ApiBearerAuth('bearer')
   @ApiBody({ type: CreateOpenLetterDto })
   @ApiOkResponse({ schema: apiEnvelopeSchema(OpenLetterDataDto) })

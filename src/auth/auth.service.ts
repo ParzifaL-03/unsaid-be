@@ -8,17 +8,24 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import type { Request, Response } from 'express';
-import { Types, type Model } from 'mongoose';
+import type { Model } from 'mongoose';
 import { z } from 'zod';
 import type { AppEnv } from '../config/env';
 import type { AuthAccount } from '../contracts/auth';
-import { Session } from './schemas/session.schema';
 import { User, type UserDocument } from './schemas/user.schema';
 
-export const SESSION_COOKIE = 'unsaid-session';
+export const ACCESS_TOKEN_COOKIE = 'unsaid-access';
+export const REFRESH_TOKEN_COOKIE = 'unsaid-refresh';
 export const OAUTH_STATE_COOKIE = 'unsaid-oauth-state';
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
-const SESSION_VERIFIER_BYTES = 32;
+
+type JwtTokenType = 'access' | 'refresh';
+type JwtPayload = {
+  sub: string;
+  type: JwtTokenType;
+  iat: number;
+  exp: number;
+};
 
 export const googleUserInfoSchema = z.object({
   sub: z.string().min(1),
@@ -39,37 +46,10 @@ export class AuthService {
   constructor(
     private readonly config: ConfigService<AppEnv, true>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
-    @InjectModel(Session.name) private readonly sessionModel: Model<Session>,
   ) {}
 
   private base64Url(input: Buffer | string) {
     return Buffer.from(input).toString('base64url');
-  }
-
-  private hashSessionVerifier(value: string) {
-    return createHmac('sha256', this.config.get('AUTH_SECRET', { infer: true }))
-      .update(value, 'utf8')
-      .digest('hex');
-  }
-
-  private legacyHashToken(value: string) {
-    return createHash('sha256').update(value, 'utf8').digest('hex');
-  }
-
-  private createSessionToken(sessionId: Types.ObjectId, verifier: string) {
-    return `${sessionId.toString()}.${verifier}`;
-  }
-
-  private parseSessionToken(value: string) {
-    const [sessionId, verifier] = value.split('.');
-    if (!sessionId || !verifier || !Types.ObjectId.isValid(sessionId)) {
-      return null;
-    }
-
-    return {
-      sessionId,
-      verifier,
-    };
   }
 
   private sign(value: string) {
@@ -78,6 +58,57 @@ export class AuthService {
         .update(value)
         .digest(),
     );
+  }
+
+  private signJwt(payload: JwtPayload) {
+    const header = this.base64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+    const encodedPayload = this.base64Url(JSON.stringify(payload));
+    const signature = this.sign(`${header}.${encodedPayload}`);
+    return `${header}.${encodedPayload}.${signature}`;
+  }
+
+  private createJwt(userId: string, type: JwtTokenType, maxAgeSeconds: number) {
+    const now = Math.floor(Date.now() / 1000);
+    return this.signJwt({
+      sub: userId,
+      type,
+      iat: now,
+      exp: now + maxAgeSeconds,
+    });
+  }
+
+  private verifyJwt(token: string, expectedType: JwtTokenType) {
+    const [header, payload, signature] = token.split('.');
+    if (!header || !payload || !signature) return null;
+
+    const expected = this.sign(`${header}.${payload}`);
+    const providedBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (
+      providedBuffer.length !== expectedBuffer.length ||
+      !timingSafeEqual(providedBuffer, expectedBuffer)
+    ) {
+      return null;
+    }
+
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(payload, 'base64url').toString('utf8'),
+      ) as Partial<JwtPayload>;
+      const now = Math.floor(Date.now() / 1000);
+      if (
+        typeof decoded.sub !== 'string' ||
+        decoded.type !== expectedType ||
+        typeof decoded.exp !== 'number' ||
+        decoded.exp <= now
+      ) {
+        return null;
+      }
+
+      return decoded as JwtPayload;
+    } catch {
+      return null;
+    }
   }
 
   private encodeSignedJson(value: unknown) {
@@ -127,6 +158,31 @@ export class AuthService {
     } as const;
   }
 
+  private accessTokenMaxAgeSeconds() {
+    return (
+      this.config.get('ACCESS_TOKEN_MAX_AGE_MINUTES', { infer: true }) * 60
+    );
+  }
+
+  private refreshTokenMaxAgeSeconds() {
+    return (
+      this.config.get('REFRESH_TOKEN_MAX_AGE_DAYS', { infer: true }) *
+      24 *
+      60 *
+      60
+    );
+  }
+
+  private tokenFromRequest(request: Request, cookieName: string) {
+    const cookieToken = request.cookies?.[cookieName] as string | undefined;
+    if (cookieToken) return cookieToken;
+
+    if (cookieName !== ACCESS_TOKEN_COOKIE) return undefined;
+    const authorization = request.get('authorization');
+    const [scheme, token] = authorization?.split(/\s+/) ?? [];
+    return scheme?.toLowerCase() === 'bearer' ? token : undefined;
+  }
+
   toAuthAccount(user: UserDocument): AuthAccount {
     return {
       userId: user._id.toString(),
@@ -165,19 +221,26 @@ export class AuthService {
     });
   }
 
-  setSessionCookie(
-    response: Response,
-    session: { token: string; expiresAt: Date },
-  ) {
+  setAuthCookies(response: Response, userId: string) {
+    const accessTokenMaxAge = this.accessTokenMaxAgeSeconds();
+    const refreshTokenMaxAge = this.refreshTokenMaxAgeSeconds();
+    const now = Date.now();
+
     response.cookie(
-      SESSION_COOKIE,
-      session.token,
-      this.cookieOptions(session.expiresAt),
+      ACCESS_TOKEN_COOKIE,
+      this.createJwt(userId, 'access', accessTokenMaxAge),
+      this.cookieOptions(new Date(now + accessTokenMaxAge * 1000)),
+    );
+    response.cookie(
+      REFRESH_TOKEN_COOKIE,
+      this.createJwt(userId, 'refresh', refreshTokenMaxAge),
+      this.cookieOptions(new Date(now + refreshTokenMaxAge * 1000)),
     );
   }
 
   clearAuthCookies(response: Response) {
-    response.clearCookie(SESSION_COOKIE, this.cookieOptions());
+    response.clearCookie(ACCESS_TOKEN_COOKIE, this.cookieOptions());
+    response.clearCookie(REFRESH_TOKEN_COOKIE, this.cookieOptions());
     this.clearOauthStateCookie(response);
   }
 
@@ -219,82 +282,38 @@ export class AuthService {
     );
   }
 
-  async createDatabaseSession(request: Request, userId: string) {
-    const sessionId = new Types.ObjectId();
-    const verifier = this.base64Url(randomBytes(SESSION_VERIFIER_BYTES));
-    const expiresAt = new Date(
-      Date.now() +
-        this.config.get('SESSION_MAX_AGE_DAYS', { infer: true }) *
-          24 *
-          60 *
-          60 *
-          1000,
-    );
-    const forwardedFor = request.headers['x-forwarded-for'];
-    const ip = Array.isArray(forwardedFor)
-      ? forwardedFor[0]
-      : (forwardedFor?.split(',')[0] ?? request.ip);
-
-    await this.sessionModel.create({
-      _id: sessionId,
-      userId,
-      tokenHash: this.hashSessionVerifier(verifier),
-      expiresAt,
-      lastUsedAt: new Date(),
-      userAgent: request.get('user-agent')?.slice(0, 500),
-      ipHash: ip
-        ? createHmac('sha256', this.config.get('AUTH_SECRET', { infer: true }))
-            .update(ip.trim())
-            .digest('hex')
-        : undefined,
-    });
-    return { token: this.createSessionToken(sessionId, verifier), expiresAt };
-  }
-
   async getSession(request: Request) {
-    const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
+    const token = this.tokenFromRequest(request, ACCESS_TOKEN_COOKIE);
     if (!token) return null;
 
-    const parsedToken = this.parseSessionToken(token);
-    const session = parsedToken
-      ? await this.sessionModel.findOne({
-          _id: parsedToken.sessionId,
-          tokenHash: this.hashSessionVerifier(parsedToken.verifier),
-          expiresAt: { $gt: new Date() },
-        })
-      : await this.sessionModel.findOne({
-          tokenHash: this.legacyHashToken(token),
-          expiresAt: { $gt: new Date() },
-        });
-    if (!session) return null;
-
+    const payload = this.verifyJwt(token, 'access');
+    if (!payload) return null;
     const user = await this.userModel.findOne({
-      _id: session.userId,
+      _id: payload.sub,
       status: 'active',
     });
     if (!user) return null;
 
-    if (Date.now() - session.lastUsedAt.getTime() > 60 * 60 * 1000) {
-      await this.sessionModel.updateOne(
-        { _id: session._id },
-        { $set: { lastUsedAt: new Date() } },
-      );
-    }
     return { user, account: this.toAuthAccount(user) };
   }
 
-  async revokeSession(request: Request) {
-    const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
-    if (token) {
-      const parsedToken = this.parseSessionToken(token);
-      await this.sessionModel.deleteOne(
-        parsedToken
-          ? {
-              _id: parsedToken.sessionId,
-              tokenHash: this.hashSessionVerifier(parsedToken.verifier),
-            }
-          : { tokenHash: this.legacyHashToken(token) },
-      );
-    }
+  async refreshSession(request: Request, response: Response) {
+    const token = this.tokenFromRequest(request, REFRESH_TOKEN_COOKIE);
+    if (!token) return null;
+
+    const payload = this.verifyJwt(token, 'refresh');
+    if (!payload) return null;
+    const user = await this.userModel.findOne({
+      _id: payload.sub,
+      status: 'active',
+    });
+    if (!user) return null;
+
+    this.setAuthCookies(response, user._id.toString());
+    return { user, account: this.toAuthAccount(user) };
+  }
+
+  revokeSession(response: Response) {
+    this.clearAuthCookies(response);
   }
 }

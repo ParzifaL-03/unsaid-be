@@ -37,7 +37,18 @@ export const envSchema = z.object({
         .filter(Boolean),
     )
     .pipe(z.array(z.url()).min(1, 'CORS_URL must include an allowed origin.')),
-  SESSION_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  ACCESS_TOKEN_MAX_AGE_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1440)
+    .default(15),
+  REFRESH_TOKEN_MAX_AGE_DAYS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(365)
+    .default(30),
   COOKIE_SAME_SITE: z.enum(['lax', 'none']).default('lax'),
 });
 

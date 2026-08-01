@@ -163,17 +163,13 @@ export class AuthController {
     }
 
     const user = await this.auth.upsertGoogleUser(userResult.data);
-    const session = await this.auth.createDatabaseSession(
-      request,
-      user._id.toString(),
-    );
-    this.auth.setSessionCookie(response, session);
+    this.auth.setAuthCookies(response, user._id.toString());
     response.redirect(this.frontendCallbackUrl());
   }
 
   @Get('auth/session')
   @ApiOperation({ summary: 'Get the current anonymous account session' })
-  @ApiCookieAuth('unsaid-session')
+  @ApiCookieAuth('unsaid-access')
   @ApiBearerAuth('bearer')
   @ApiOkResponse({ schema: apiEnvelopeSchema(SessionDataDto) })
   @ApiUnauthorizedResponse({ description: 'No active session.' })
@@ -196,18 +192,39 @@ export class AuthController {
     });
   }
 
-  @Post('auth/sign-out')
+  @Post('auth/refresh')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Sign out and clear the session cookie' })
-  @ApiCookieAuth('unsaid-session')
-  @ApiBearerAuth('bearer')
-  @ApiOkResponse({ schema: apiEnvelopeSchema(SignOutDataDto) })
-  async signOut(
+  @ApiOperation({ summary: 'Refresh access and refresh JWT cookies' })
+  @ApiCookieAuth('unsaid-refresh')
+  @ApiOkResponse({ schema: apiEnvelopeSchema(SessionDataDto) })
+  @ApiUnauthorizedResponse({ description: 'No active refresh token.' })
+  async refresh(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    await this.auth.revokeSession(request);
-    this.auth.clearAuthCookies(response);
+    const session = await this.auth.refreshSession(request, response);
+    response.setHeader('Cache-Control', 'private, no-store');
+    if (!session) {
+      throw new ApiError(
+        401,
+        'REFRESH_REQUIRED',
+        'A valid refresh token is required for this action.',
+      );
+    }
+
+    return parseResponse(sessionResponseSchema, {
+      account: session.account,
+    });
+  }
+
+  @Post('auth/sign-out')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Sign out and clear the session cookie' })
+  @ApiCookieAuth('unsaid-access')
+  @ApiBearerAuth('bearer')
+  @ApiOkResponse({ schema: apiEnvelopeSchema(SignOutDataDto) })
+  signOut(@Res({ passthrough: true }) response: Response) {
+    this.auth.revokeSession(response);
     return parseResponse(signOutResponseSchema, { ok: true });
   }
 
@@ -215,7 +232,7 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Rotate the current user alias' })
-  @ApiCookieAuth('unsaid-session')
+  @ApiCookieAuth('unsaid-access')
   @ApiBearerAuth('bearer')
   @ApiOkResponse({ schema: apiEnvelopeSchema(AliasDataDto) })
   async rotateAlias(@CurrentUser() user: UserDocument) {

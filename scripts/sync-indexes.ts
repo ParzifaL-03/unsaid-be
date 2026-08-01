@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import mongoose from 'mongoose';
-import { Session, SessionSchema } from '../src/auth/schemas/session.schema';
 import { User, UserSchema } from '../src/auth/schemas/user.schema';
 import { Capsule, CapsuleSchema } from '../src/capsules/schemas/capsule.schema';
 import { configureDnsServers } from '../src/config/dns';
@@ -14,7 +13,6 @@ import { Reply, ReplySchema } from '../src/posts/schemas/reply.schema';
 
 const databaseModels = [
   mongoose.model(User.name, UserSchema),
-  mongoose.model(Session.name, SessionSchema),
   mongoose.model(Post.name, PostSchema),
   mongoose.model(Reply.name, ReplySchema),
   mongoose.model(Reaction.name, ReactionSchema),

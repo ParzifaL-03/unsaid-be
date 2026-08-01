@@ -43,7 +43,7 @@ const userParamsSchema = z.object({ userId: objectIdSchema });
 @Controller()
 @UseGuards(AuthGuard)
 @ApiTags('Moderation')
-@ApiCookieAuth('unsaid-session')
+@ApiCookieAuth('unsaid-access')
 @ApiBearerAuth('bearer')
 export class ModerationController {
   constructor(private readonly moderation: ModerationService) {}
