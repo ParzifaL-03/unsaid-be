@@ -65,6 +65,9 @@ npm run dev
 ```
 
 The API starts at `http://localhost:4000/api`.
+Authenticated endpoints accept the HTTP-only session cookies set by the OAuth
+callback. They also accept `Authorization: Bearer <token>` for API clients that
+read the access or refresh JWT from a previous response/cookie jar.
 
 If `mongodb+srv://` fails with `querySrv ECONNREFUSED`, keep
 `MONGODB_DNS_SERVERS=1.1.1.1,8.8.8.8` in `.env` so Node resolves MongoDB Atlas
