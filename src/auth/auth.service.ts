@@ -1,12 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import {
-  createHash,
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { Model } from 'mongoose';
 import { z } from 'zod';
@@ -23,8 +19,15 @@ type JwtTokenType = 'access' | 'refresh';
 type JwtPayload = {
   sub: string;
   type: JwtTokenType;
-  iat: number;
-  exp: number;
+  iat?: number;
+  exp?: number;
+};
+type OauthStatePayload = {
+  state: string;
+  codeVerifier: string;
+  type: 'oauth-state';
+  iat?: number;
+  exp?: number;
 };
 
 export const googleUserInfoSchema = z.object({
@@ -46,93 +49,31 @@ export class AuthService {
   constructor(
     private readonly config: ConfigService<AppEnv, true>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    private readonly jwtService: JwtService,
   ) {}
 
   private base64Url(input: Buffer | string) {
     return Buffer.from(input).toString('base64url');
   }
 
-  private sign(value: string) {
-    return this.base64Url(
-      createHmac('sha256', this.config.get('AUTH_SECRET', { infer: true }))
-        .update(value)
-        .digest(),
-    );
-  }
-
-  private signJwt(payload: JwtPayload) {
-    const header = this.base64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-    const encodedPayload = this.base64Url(JSON.stringify(payload));
-    const signature = this.sign(`${header}.${encodedPayload}`);
-    return `${header}.${encodedPayload}.${signature}`;
-  }
-
   private createJwt(userId: string, type: JwtTokenType, maxAgeSeconds: number) {
-    const now = Math.floor(Date.now() / 1000);
-    return this.signJwt({
-      sub: userId,
-      type,
-      iat: now,
-      exp: now + maxAgeSeconds,
+    return this.jwtService.sign({ sub: userId, type } satisfies JwtPayload, {
+      expiresIn: maxAgeSeconds,
     });
   }
 
   private verifyJwt(token: string, expectedType: JwtTokenType) {
-    const [header, payload, signature] = token.split('.');
-    if (!header || !payload || !signature) return null;
-
-    const expected = this.sign(`${header}.${payload}`);
-    const providedBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expected);
-    if (
-      providedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(providedBuffer, expectedBuffer)
-    ) {
-      return null;
-    }
-
     try {
-      const decoded = JSON.parse(
-        Buffer.from(payload, 'base64url').toString('utf8'),
-      ) as Partial<JwtPayload>;
-      const now = Math.floor(Date.now() / 1000);
+      const decoded = this.jwtService.verify<Partial<JwtPayload>>(token);
       if (
         typeof decoded.sub !== 'string' ||
         decoded.type !== expectedType ||
-        typeof decoded.exp !== 'number' ||
-        decoded.exp <= now
+        typeof decoded.exp !== 'number'
       ) {
         return null;
       }
 
       return decoded as JwtPayload;
-    } catch {
-      return null;
-    }
-  }
-
-  private encodeSignedJson(value: unknown) {
-    const payload = this.base64Url(JSON.stringify(value));
-    return `${payload}.${this.sign(payload)}`;
-  }
-
-  private decodeSignedJson<T>(value: string): T | null {
-    const [payload, signature] = value.split('.');
-    if (!payload || !signature) return null;
-    const expected = this.sign(payload);
-    const providedBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expected);
-    if (
-      providedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(providedBuffer, expectedBuffer)
-    ) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(
-        Buffer.from(payload, 'base64url').toString('utf8'),
-      ) as T;
     } catch {
       return null;
     }
@@ -203,15 +144,34 @@ export class AuthService {
     return {
       state,
       codeChallenge,
-      cookieValue: this.encodeSignedJson({ state, codeVerifier }),
+      cookieValue: this.jwtService.sign(
+        {
+          state,
+          codeVerifier,
+          type: 'oauth-state',
+        } satisfies OauthStatePayload,
+        { expiresIn: STATE_MAX_AGE_MS / 1000 },
+      ),
     };
   }
 
   readOauthState(value?: string) {
     if (!value) return null;
-    return this.decodeSignedJson<{ state: string; codeVerifier: string }>(
-      value,
-    );
+    try {
+      const payload = this.jwtService.verify<Partial<OauthStatePayload>>(value);
+      if (
+        payload.type !== 'oauth-state' ||
+        typeof payload.state !== 'string' ||
+        typeof payload.codeVerifier !== 'string' ||
+        typeof payload.exp !== 'number'
+      ) {
+        return null;
+      }
+
+      return { state: payload.state, codeVerifier: payload.codeVerifier };
+    } catch {
+      return null;
+    }
   }
 
   setOauthStateCookie(response: Response, value: string) {
