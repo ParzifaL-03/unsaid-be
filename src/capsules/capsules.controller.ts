@@ -1,8 +1,22 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiCookieAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { z } from 'zod';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { UserDocument } from '../auth/schemas/user.schema';
+import {
+  apiEnvelopeSchema,
+  CapsuleDataDto,
+  CapsulesDataDto,
+  CreateCapsuleDto,
+} from '../common/swagger.dto';
 import {
   parseResponse,
   ZodValidationPipe,
@@ -16,10 +30,15 @@ import { CapsulesService } from './capsules.service';
 
 @Controller('capsules')
 @UseGuards(AuthGuard)
+@ApiTags('Capsules')
+@ApiCookieAuth('unsaid-session')
+@ApiBearerAuth('bearer')
 export class CapsulesController {
   constructor(private readonly capsules: CapsulesService) {}
 
   @Get()
+  @ApiOperation({ summary: 'List capsules for the current user' })
+  @ApiOkResponse({ schema: apiEnvelopeSchema(CapsulesDataDto) })
   async list(@CurrentUser() user: UserDocument) {
     return parseResponse(capsulesResponseSchema, {
       capsules: await this.capsules.list(user),
@@ -27,6 +46,9 @@ export class CapsulesController {
   }
 
   @Post()
+  @ApiOperation({ summary: 'Create a time capsule' })
+  @ApiBody({ type: CreateCapsuleDto })
+  @ApiOkResponse({ schema: apiEnvelopeSchema(CapsuleDataDto) })
   async create(
     @CurrentUser() user: UserDocument,
     @Body(new ZodValidationPipe(createCapsuleInputSchema))

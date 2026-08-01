@@ -7,10 +7,25 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiCookieAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { z } from 'zod';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { UserDocument } from '../auth/schemas/user.schema';
+import {
+  apiEnvelopeSchema,
+  BlockDataDto,
+  CreateReportDto,
+  ReportDataDto,
+} from '../common/swagger.dto';
 import {
   parseResponse,
   ZodValidationPipe,
@@ -27,10 +42,16 @@ const userParamsSchema = z.object({ userId: objectIdSchema });
 
 @Controller()
 @UseGuards(AuthGuard)
+@ApiTags('Moderation')
+@ApiCookieAuth('unsaid-session')
+@ApiBearerAuth('bearer')
 export class ModerationController {
   constructor(private readonly moderation: ModerationService) {}
 
   @Post('reports')
+  @ApiOperation({ summary: 'Report a user, post, reply, or letter' })
+  @ApiBody({ type: CreateReportDto })
+  @ApiOkResponse({ schema: apiEnvelopeSchema(ReportDataDto) })
   async report(
     @CurrentUser() user: UserDocument,
     @Body(new ZodValidationPipe(createReportInputSchema))
@@ -43,6 +64,9 @@ export class ModerationController {
   }
 
   @Post('blocks/:userId')
+  @ApiOperation({ summary: 'Block a user' })
+  @ApiParam({ name: 'userId', example: '507f1f77bcf86cd799439011' })
+  @ApiOkResponse({ schema: apiEnvelopeSchema(BlockDataDto) })
   async block(
     @CurrentUser() user: UserDocument,
     @Param(new ZodValidationPipe(userParamsSchema))
@@ -56,6 +80,9 @@ export class ModerationController {
 
   @Delete('blocks/:userId')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Unblock a user' })
+  @ApiParam({ name: 'userId', example: '507f1f77bcf86cd799439011' })
+  @ApiOkResponse({ schema: apiEnvelopeSchema(BlockDataDto) })
   async unblock(
     @CurrentUser() user: UserDocument,
     @Param(new ZodValidationPipe(userParamsSchema))

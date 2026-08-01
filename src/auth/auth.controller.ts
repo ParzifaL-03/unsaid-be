@@ -8,8 +8,23 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ApiBearerAuth,
+  ApiCookieAuth,
+  ApiUnauthorizedResponse,
+  ApiFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { ApiError } from '../common/api-error';
+import {
+  AliasDataDto,
+  apiEnvelopeSchema,
+  SessionDataDto,
+  SignOutDataDto,
+} from '../common/swagger.dto';
 import { parseResponse } from '../common/zod-validation.pipe';
 import type { AppEnv } from '../config/env';
 import {
@@ -27,6 +42,7 @@ import { CurrentUser } from './current-user.decorator';
 import type { UserDocument } from './schemas/user.schema';
 
 @Controller()
+@ApiTags('Auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
@@ -51,6 +67,8 @@ export class AuthController {
   }
 
   @Get('auth/google')
+  @ApiOperation({ summary: 'Start Google OAuth login' })
+  @ApiFoundResponse({ description: 'Redirects to Google OAuth.' })
   google(@Res() response: Response) {
     const google = this.googleConfig();
     if (!google) {
@@ -75,6 +93,8 @@ export class AuthController {
   }
 
   @Get('auth/google/callback')
+  @ApiOperation({ summary: 'Handle Google OAuth callback' })
+  @ApiFoundResponse({ description: 'Redirects back to the frontend.' })
   async googleCallback(@Req() request: Request, @Res() response: Response) {
     const fail = (reason: string) => {
       this.auth.clearOauthStateCookie(response);
@@ -152,18 +172,36 @@ export class AuthController {
   }
 
   @Get('auth/session')
-  async session(@Req() request: Request, @Res() response: Response) {
+  @ApiOperation({ summary: 'Get the current anonymous account session' })
+  @ApiCookieAuth('unsaid-session')
+  @ApiBearerAuth('bearer')
+  @ApiOkResponse({ schema: apiEnvelopeSchema(SessionDataDto) })
+  @ApiUnauthorizedResponse({ description: 'No active session.' })
+  async session(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     const session = await this.auth.getSession(request);
     response.setHeader('Cache-Control', 'private, no-store');
-    response.json(
-      parseResponse(sessionResponseSchema, {
-        account: session?.account ?? null,
-      }),
-    );
+    if (!session) {
+      throw new ApiError(
+        401,
+        'AUTH_REQUIRED',
+        'A Google session is required for this action.',
+      );
+    }
+
+    return parseResponse(sessionResponseSchema, {
+      account: session.account,
+    });
   }
 
   @Post('auth/sign-out')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Sign out and clear the session cookie' })
+  @ApiCookieAuth('unsaid-session')
+  @ApiBearerAuth('bearer')
+  @ApiOkResponse({ schema: apiEnvelopeSchema(SignOutDataDto) })
   async signOut(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
@@ -176,6 +214,10 @@ export class AuthController {
   @Post('me/alias')
   @HttpCode(200)
   @UseGuards(AuthGuard)
+  @ApiOperation({ summary: 'Rotate the current user alias' })
+  @ApiCookieAuth('unsaid-session')
+  @ApiBearerAuth('bearer')
+  @ApiOkResponse({ schema: apiEnvelopeSchema(AliasDataDto) })
   async rotateAlias(@CurrentUser() user: UserDocument) {
     const updated = await this.auth.rotateAlias(user);
     if (!updated) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found.');

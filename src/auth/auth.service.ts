@@ -8,7 +8,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import type { Request, Response } from 'express';
-import type { Model } from 'mongoose';
+import { Types, type Model } from 'mongoose';
 import { z } from 'zod';
 import type { AppEnv } from '../config/env';
 import type { AuthAccount } from '../contracts/auth';
@@ -18,6 +18,7 @@ import { User, type UserDocument } from './schemas/user.schema';
 export const SESSION_COOKIE = 'unsaid-session';
 export const OAUTH_STATE_COOKIE = 'unsaid-oauth-state';
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
+const SESSION_VERIFIER_BYTES = 32;
 
 export const googleUserInfoSchema = z.object({
   sub: z.string().min(1),
@@ -45,8 +46,30 @@ export class AuthService {
     return Buffer.from(input).toString('base64url');
   }
 
-  private hashToken(value: string) {
-    return createHash('sha256').update(value).digest('hex');
+  private hashSessionVerifier(value: string) {
+    return createHmac('sha256', this.config.get('AUTH_SECRET', { infer: true }))
+      .update(value, 'utf8')
+      .digest('hex');
+  }
+
+  private legacyHashToken(value: string) {
+    return createHash('sha256').update(value, 'utf8').digest('hex');
+  }
+
+  private createSessionToken(sessionId: Types.ObjectId, verifier: string) {
+    return `${sessionId.toString()}.${verifier}`;
+  }
+
+  private parseSessionToken(value: string) {
+    const [sessionId, verifier] = value.split('.');
+    if (!sessionId || !verifier || !Types.ObjectId.isValid(sessionId)) {
+      return null;
+    }
+
+    return {
+      sessionId,
+      verifier,
+    };
   }
 
   private sign(value: string) {
@@ -197,7 +220,8 @@ export class AuthService {
   }
 
   async createDatabaseSession(request: Request, userId: string) {
-    const token = this.base64Url(randomBytes(32));
+    const sessionId = new Types.ObjectId();
+    const verifier = this.base64Url(randomBytes(SESSION_VERIFIER_BYTES));
     const expiresAt = new Date(
       Date.now() +
         this.config.get('SESSION_MAX_AGE_DAYS', { infer: true }) *
@@ -212,8 +236,9 @@ export class AuthService {
       : (forwardedFor?.split(',')[0] ?? request.ip);
 
     await this.sessionModel.create({
+      _id: sessionId,
       userId,
-      tokenHash: this.hashToken(token),
+      tokenHash: this.hashSessionVerifier(verifier),
       expiresAt,
       lastUsedAt: new Date(),
       userAgent: request.get('user-agent')?.slice(0, 500),
@@ -223,17 +248,24 @@ export class AuthService {
             .digest('hex')
         : undefined,
     });
-    return { token, expiresAt };
+    return { token: this.createSessionToken(sessionId, verifier), expiresAt };
   }
 
   async getSession(request: Request) {
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (!token) return null;
 
-    const session = await this.sessionModel.findOne({
-      tokenHash: this.hashToken(token),
-      expiresAt: { $gt: new Date() },
-    });
+    const parsedToken = this.parseSessionToken(token);
+    const session = parsedToken
+      ? await this.sessionModel.findOne({
+          _id: parsedToken.sessionId,
+          tokenHash: this.hashSessionVerifier(parsedToken.verifier),
+          expiresAt: { $gt: new Date() },
+        })
+      : await this.sessionModel.findOne({
+          tokenHash: this.legacyHashToken(token),
+          expiresAt: { $gt: new Date() },
+        });
     if (!session) return null;
 
     const user = await this.userModel.findOne({
@@ -254,7 +286,15 @@ export class AuthService {
   async revokeSession(request: Request) {
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (token) {
-      await this.sessionModel.deleteOne({ tokenHash: this.hashToken(token) });
+      const parsedToken = this.parseSessionToken(token);
+      await this.sessionModel.deleteOne(
+        parsedToken
+          ? {
+              _id: parsedToken.sessionId,
+              tokenHash: this.hashSessionVerifier(parsedToken.verifier),
+            }
+          : { tokenHash: this.legacyHashToken(token) },
+      );
     }
   }
 }
